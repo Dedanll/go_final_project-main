@@ -2,9 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"go_final_project/internal/models"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -118,11 +116,11 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 	}
 	now, err = time.Parse("20060102", now.Format("20060102"))
 	if err != nil {
-		return "", fmt.Errorf("%s/nневерный формат now", err)
+		return "", fmt.Errorf("%s\nневерный формат now", err)
 	}
 	dateStart, err := time.Parse("20060102", date)
 	if err != nil {
-		return "", fmt.Errorf("%s/nневерный формат date", err)
+		return "", fmt.Errorf("%s\nневерный формат date", err)
 	}
 
 	var resDate time.Time
@@ -415,104 +413,4 @@ func countMonthDay(wantedMonths map[int]bool, now time.Time, dateStart time.Time
 			return dateStart.Day()
 		}
 	}
-}
-
-// CompleteRequest вычисляет следующую дату для указанной задачи на основе предоставленной даты и правила повторения.
-// Если поле даты не указано или оно пустое, используется текущая дата.
-// Если дата меньше текущей даты, есть два варианта:
-// - Если правило повторения не указано или оно пустое, используется текущая дата.
-// - Если указано правило повторения, необходимо вычислить и сохранить в базе данных следующую дату, которая больше текущей даты.
-//
-// Параметры:
-// r: Структура Task, содержащая идентификатор, название, дату и правило повторения задачи.
-//
-// Возвращает:
-// Строка, представляющая следующую дату для задачи, или ошибку, если вычисление даты завершается с ошибкой.
-// Ошибка будет равна nil, если вычисление даты выполнено успешно.
-func CompleteRequest(r models.Task) (string, error) {
-	var nextDate string
-	// Если поле date не указано или содержит пустую строку, берётся сегодняшнее число.
-	if r.Date == "" || len(r.Date) == 0 {
-		r.Date = time.Now().Format("20060102")
-		return r.Date, nil
-	}
-	// Если дата меньше сегодняшнего числа, есть два варианта:
-	if date, err := time.Parse("20060102", r.Date); err == nil && date.Before(time.Now()) {
-		// если правило повторения не указано или равно пустой строке, подставляется сегодняшнее число;
-		if r.Repeat == "" || len(r.Repeat) == 0 {
-			nextDate = time.Now().Format("20060102")
-			// при указанном правиле повторения вам нужно вычислить и записать в таблицу дату выполнения,
-			// которая будет больше сегодняшнего числа
-		} else {
-			nextDate, err = NextDate(time.Now(), r.Date, r.Repeat)
-			if err != nil {
-				return "", err
-			}
-		}
-	} else if err == nil && time.Now().Before(date) {
-		nextDate, err = NextDate(time.Now(), r.Date, r.Repeat)
-		if err != nil {
-			return "", err
-		}
-	}
-	return nextDate, nil
-}
-
-// CheckRequest - это функция, которая проверяет входные данные для задачи.
-// Она проверяет поля ID, названия, даты и повторения в предоставленной задаче.
-//
-// Параметры:
-// r - структура Task, содержащая идентификатор, название, дату и правило повторения задачи.
-//
-// Возвращает:
-// Ошибку, если проверка не пройдена, или nil, если проверка пройдена успешно.
-//
-// Ошибка может возникать в следующих случаях:
-// - если поле ID не является числом, возвращается ошибка "не удается разобрать ID";
-// - если поле названия пустое или содержит только пробелы, возвращается ошибка "не указано название задачи";
-// - если поле даты не пустое и не соответствует формату "20060102", возвращается ошибка "неверный формат даты";
-// - если поле повторения не пустое и не соответствует определенным правилам, возвращается ошибка "неверный формат повторения".
-func CheckRequest(r models.Task) error {
-	if r.ID != "" || len(r.ID) != 0 {
-		_, err := strconv.Atoi(r.ID)
-		if err != nil {
-			err = fmt.Errorf("can not parse ID")
-			return err
-		}
-	}
-	if len(r.Title) == 0 || r.Title == "" || r.Title == " " {
-		return fmt.Errorf("не указано название задачи")
-	}
-	if r.Date != "" {
-		if _, err := time.Parse("20060102", r.Date); err != nil {
-			return fmt.Errorf("неверный формат даты")
-		}
-	}
-	if len(r.Repeat) != 0 || r.Repeat != "" {
-		repeatSlc := strings.Split(r.Repeat, " ")
-		rule := repeatSlc[0]
-		if rule == "y" || rule == "d" || rule == "w" || rule == "m" {
-			if len(repeatSlc) > 3 || rule == "y" && len(repeatSlc) > 1 || rule == "d" && len(repeatSlc) == 1 || rule == "d" && len(repeatSlc) > 2 || rule == "w" && len(repeatSlc) != 2 {
-				return fmt.Errorf("неверный формат repeat")
-			}
-		} else {
-			return fmt.Errorf("неверный формат repeat")
-		}
-	}
-	return nil
-}
-
-// SendErr - это функция, которая отправляет клиенту ответ об ошибке.
-// Она устанавливает соответствующий HTTP-код состояния и тип содержимого, а также форматирует сообщение об ошибке как JSON-объект.
-//
-// Параметры:
-// w - http.ResponseWriter, куда будет записан ответ.
-// err - объект ошибки, содержащий сообщение об ошибке для отправки.
-// status - целое число, представляющее HTTP-код состояния для отправки.
-//
-// Возвращает:
-// Эта функция не возвращает никакого значения.
-func SendErr(w http.ResponseWriter, err error, status int) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), status)
 }

@@ -2,33 +2,43 @@ package main
 
 import (
 	"database/sql"
-	"go_final_project/internal/handlers"
-	"go_final_project/internal/utils"
-	"log"
+	"fmt"
 	"net/http"
 
+	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
+
+	"go_final_project/internal/handlers"
+	"go_final_project/internal/models"
+	"go_final_project/internal/utils"
 )
 
 // main является точкой входа в приложение. Она инициализирует сервер, настраивает маршрутизацию,
 // и запускает прослушивание входящих подключений.
 func main() {
-	webDir := "./web"                // Каталог, содержащий статические файлы для обслуживания
-	port := utils.CheckPort()        // Функция для проверки и возврата номера порта
+	logger := zap.NewExample()
+	defer logger.Sync()
+	port := utils.CheckPort() // Функция для проверки и возврата номера порта
+	url := fmt.Sprintf("localhost:%s", port)
+	sugar := logger.Sugar()
+	webDir := "./web" // Каталог, содержащий статические файлы для обслуживания
+
 	path, install := utils.CheckDB() // Функция для проверки и возврата пути к базе данных и флага установки
 
 	// Открываем подключение к базе данных
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		log.Fatal(err)
+		sugar.Fatal(err)
 	}
 	defer db.Close()
-
-	// Создаем новый экземпляр DBConnection и инициализируем базу данных, если это необходимо
-	DBconnection := &handlers.DBConnection{DB: db}
+	dbConnection := models.NewConnection(db, sugar)
 	if install {
-		DBconnection.InitDB()
+		err = dbConnection.InitDB()
+		if err != nil {
+			sugar.Error(err)
+		}
 	}
+	handler := handlers.NewHandler(dbConnection, sugar)
 
 	// Создаем новый экземпляр http.Server с указанным портом
 	server := &http.Server{
@@ -37,15 +47,19 @@ func main() {
 
 	// Настраиваем маршрутизацию для обслуживания всех файлов в каталоге web и конечных точек API
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
-	http.HandleFunc("/api/signin", handlers.Authentication)
-	http.HandleFunc("/api/nextdate", handlers.NextDate)
-	http.HandleFunc("/api/task", DBconnection.Task)
-	http.HandleFunc("/api/tasks", DBconnection.GetTasks)
-	http.HandleFunc("/api/task/done", DBconnection.TaskDone)
+	http.HandleFunc("/api/signin", handler.Authentication)
+	http.HandleFunc("/api/nextdate", handler.NextDate)
+	http.HandleFunc("GET /api/task", handler.GetTask)
+	http.HandleFunc("PUT /api/task", handler.EditTask)
+	http.HandleFunc("POST /api/task", handler.AddTask)
+	http.HandleFunc("DELETE /api/task", handler.DeleteTask)
+	http.HandleFunc("/api/tasks", handler.GetAllTasks)
+	http.HandleFunc("/api/task/done", handler.TaskDone)
 
 	// Запускаем сервер и прослушиваем входящие подключения
+	sugar.Infof("Server started at %s", url)
 	err = server.ListenAndServe()
 	if err != nil {
-		panic(err)
+		sugar.Panic(err)
 	}
 }

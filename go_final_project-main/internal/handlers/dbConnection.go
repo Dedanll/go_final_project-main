@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"database/sql"
-	"fmt"
+	"log"
 	"sync"
 )
 
@@ -31,11 +31,11 @@ func (c *DBConnection) InitDB() {
 		);`
 	)
 	if _, err := c.DB.Exec(CreateTableQuery); err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 	}
 
 	if _, err := c.DB.Exec(`CREATE INDEX taks_date ON scheduler (date);`); err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 
 	}
 
